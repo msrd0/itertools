@@ -1,10 +1,9 @@
 use crate::{
     adaptors::map::{MapSpecialCase, MapSpecialCaseFn},
+    map::{Entry, Map},
     MinMaxResult,
 };
 use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::hash::Hash;
 use std::iter::Iterator;
 use std::ops::{Add, Mul};
 
@@ -39,7 +38,6 @@ pub(crate) fn new_map_for_grouping<K, I: Iterator, F: FnMut(&I::Item) -> K>(
 pub fn new<I, K, V>(iter: I) -> GroupingMap<I>
 where
     I: Iterator<Item = (K, V)>,
-    K: Hash + Eq,
 {
     GroupingMap { iter }
 }
@@ -63,7 +61,6 @@ pub struct GroupingMap<I> {
 impl<I, K, V> GroupingMap<I>
 where
     I: Iterator<Item = (K, V)>,
-    K: Hash + Eq,
 {
     /// This is the generic way to perform any operation on a `GroupingMap`.
     /// It's suggested to use this method only to implement custom operations
@@ -105,11 +102,12 @@ where
     /// assert_eq!(lookup[&3], 7);
     /// assert_eq!(lookup.len(), 3);      // The final keys are only 0, 1 and 2
     /// ```
-    pub fn aggregate<FO, R>(self, mut operation: FO) -> HashMap<K, R>
+    pub fn aggregate<FO, R, M>(self, mut operation: FO) -> M
     where
         FO: FnMut(Option<R>, &K, V) -> Option<R>,
+        M: Map<K, R> + Default,
     {
-        let mut destination_map = HashMap::new();
+        let mut destination_map = M::default();
 
         self.iter.for_each(|(key, val)| {
             let acc = destination_map.remove(&key);
@@ -154,10 +152,11 @@ where
     /// assert_eq!(lookup[&2].acc, 2 + 5);
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn fold_with<FI, FO, R>(self, mut init: FI, mut operation: FO) -> HashMap<K, R>
+    pub fn fold_with<FI, FO, R, M>(self, mut init: FI, mut operation: FO) -> M
     where
         FI: FnMut(&K, &V) -> R,
         FO: FnMut(R, &K, V) -> R,
+        M: Map<K, R> + Default,
     {
         self.aggregate(|acc, key, val| {
             let acc = acc.unwrap_or_else(|| init(key, &val));
@@ -190,10 +189,11 @@ where
     /// assert_eq!(lookup[&2], 2 + 5);
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn fold<FO, R>(self, init: R, operation: FO) -> HashMap<K, R>
+    pub fn fold<FO, R, M>(self, init: R, operation: FO) -> M
     where
         R: Clone,
         FO: FnMut(R, &K, V) -> R,
+        M: Map<K, R> + Default,
     {
         self.fold_with(|_, _| init.clone(), operation)
     }
@@ -225,9 +225,10 @@ where
     /// assert_eq!(lookup[&2], 2 + 5);
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn reduce<FO>(self, mut operation: FO) -> HashMap<K, V>
+    pub fn reduce<FO, M>(self, mut operation: FO) -> M
     where
         FO: FnMut(V, &K, V) -> V,
+        M: Map<K, V> + Default,
     {
         self.aggregate(|acc, key, val| {
             Some(match acc {
@@ -239,9 +240,10 @@ where
 
     /// See [`.reduce()`](GroupingMap::reduce).
     #[deprecated(note = "Use .reduce() instead", since = "0.13.0")]
-    pub fn fold_first<FO>(self, operation: FO) -> HashMap<K, V>
+    pub fn fold_first<FO, M>(self, operation: FO) -> M
     where
         FO: FnMut(V, &K, V) -> V,
+        M: Map<K, V> + Default,
     {
         self.reduce(operation)
     }
@@ -264,11 +266,12 @@ where
     /// assert_eq!(lookup[&2], vec![2, 5].into_iter().collect::<HashSet<_>>());
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn collect<C>(self) -> HashMap<K, C>
+    pub fn collect<C, M>(self) -> M
     where
         C: Default + Extend<V>,
+        M: Map<K, C> + Default,
     {
-        let mut destination_map = HashMap::new();
+        let mut destination_map = M::default();
 
         self.iter.for_each(|(key, val)| {
             destination_map
@@ -298,9 +301,10 @@ where
     /// assert_eq!(lookup[&2], 8);
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn max(self) -> HashMap<K, V>
+    pub fn max<M>(self) -> M
     where
         V: Ord,
+        M: Map<K, V> + Default,
     {
         self.max_by(|_, v1, v2| V::cmp(v1, v2))
     }
@@ -324,9 +328,10 @@ where
     /// assert_eq!(lookup[&2], 5);
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn max_by<F>(self, mut compare: F) -> HashMap<K, V>
+    pub fn max_by<F, M>(self, mut compare: F) -> M
     where
         F: FnMut(&K, &V, &V) -> Ordering,
+        M: Map<K, V> + Default,
     {
         self.reduce(|acc, key, val| match compare(key, &acc, &val) {
             Ordering::Less | Ordering::Equal => val,
@@ -353,10 +358,11 @@ where
     /// assert_eq!(lookup[&2], 5);
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn max_by_key<F, CK>(self, mut f: F) -> HashMap<K, V>
+    pub fn max_by_key<F, CK, M>(self, mut f: F) -> M
     where
         F: FnMut(&K, &V) -> CK,
         CK: Ord,
+        M: Map<K, V> + Default,
     {
         self.max_by(|key, v1, v2| f(key, v1).cmp(&f(key, v2)))
     }
@@ -379,9 +385,10 @@ where
     /// assert_eq!(lookup[&2], 5);
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn min(self) -> HashMap<K, V>
+    pub fn min<M>(self) -> M
     where
         V: Ord,
+        M: Map<K, V> + Default,
     {
         self.min_by(|_, v1, v2| V::cmp(v1, v2))
     }
@@ -405,9 +412,10 @@ where
     /// assert_eq!(lookup[&2], 8);
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn min_by<F>(self, mut compare: F) -> HashMap<K, V>
+    pub fn min_by<F, M>(self, mut compare: F) -> M
     where
         F: FnMut(&K, &V, &V) -> Ordering,
+        M: Map<K, V> + Default,
     {
         self.reduce(|acc, key, val| match compare(key, &acc, &val) {
             Ordering::Less | Ordering::Equal => acc,
@@ -434,10 +442,11 @@ where
     /// assert_eq!(lookup[&2], 8);
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn min_by_key<F, CK>(self, mut f: F) -> HashMap<K, V>
+    pub fn min_by_key<F, CK, M>(self, mut f: F) -> M
     where
         F: FnMut(&K, &V) -> CK,
         CK: Ord,
+        M: Map<K, V> + Default,
     {
         self.min_by(|key, v1, v2| f(key, v1).cmp(&f(key, v2)))
     }
@@ -469,9 +478,10 @@ where
     /// assert_eq!(lookup[&2], OneElement(5));
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn minmax(self) -> HashMap<K, MinMaxResult<V>>
+    pub fn minmax<M>(self) -> M
     where
         V: Ord,
+        M: Map<K, MinMaxResult<V>> + Default,
     {
         self.minmax_by(|_, v1, v2| V::cmp(v1, v2))
     }
@@ -499,9 +509,10 @@ where
     /// assert_eq!(lookup[&2], OneElement(5));
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn minmax_by<F>(self, mut compare: F) -> HashMap<K, MinMaxResult<V>>
+    pub fn minmax_by<F, M>(self, mut compare: F) -> M
     where
         F: FnMut(&K, &V, &V) -> Ordering,
+        M: Map<K, MinMaxResult<V>> + Default,
     {
         self.aggregate(|acc, key, val| {
             Some(match acc {
@@ -550,10 +561,11 @@ where
     /// assert_eq!(lookup[&2], OneElement(5));
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn minmax_by_key<F, CK>(self, mut f: F) -> HashMap<K, MinMaxResult<V>>
+    pub fn minmax_by_key<F, CK, M>(self, mut f: F) -> M
     where
         F: FnMut(&K, &V) -> CK,
         CK: Ord,
+        M: Map<K, MinMaxResult<V>> + Default,
     {
         self.minmax_by(|key, v1, v2| f(key, v1).cmp(&f(key, v2)))
     }
@@ -577,9 +589,10 @@ where
     /// assert_eq!(lookup[&2], 5 + 8);
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn sum(self) -> HashMap<K, V>
+    pub fn sum<M>(self) -> M
     where
         V: Add<V, Output = V>,
+        M: Map<K, V> + Default,
     {
         self.reduce(|acc, _, val| acc + val)
     }
@@ -603,9 +616,10 @@ where
     /// assert_eq!(lookup[&2], 5 * 8);
     /// assert_eq!(lookup.len(), 3);
     /// ```
-    pub fn product(self) -> HashMap<K, V>
+    pub fn product<M>(self) -> M
     where
         V: Mul<V, Output = V>,
+        M: Map<K, V> + Default,
     {
         self.reduce(|acc, _, val| acc * val)
     }

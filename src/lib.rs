@@ -205,6 +205,8 @@ mod k_smallest;
 mod kmerge_impl;
 #[cfg(feature = "use_alloc")]
 mod lazy_buffer;
+#[cfg(feature = "use_alloc")]
+mod map;
 mod merge_join;
 mod minmax;
 #[cfg(feature = "use_alloc")]
@@ -3709,10 +3711,10 @@ pub trait Itertools: Iterator {
     /// assert_eq!(lookup[&3], vec![13, 33]);
     /// ```
     #[cfg(feature = "use_std")]
-    fn into_group_map<K, V>(self) -> HashMap<K, Vec<V>>
+    fn into_group_map<K, V, M>(self) -> M
     where
         Self: Iterator<Item = (K, V)> + Sized,
-        K: Hash + Eq,
+        M: map::Map<K, Vec<V>> + Default,
     {
         group_map::into_group_map(self)
     }
@@ -3745,11 +3747,11 @@ pub trait Itertools: Iterator {
     /// );
     /// ```
     #[cfg(feature = "use_std")]
-    fn into_group_map_by<K, V, F>(self, f: F) -> HashMap<K, Vec<V>>
+    fn into_group_map_by<K, V, F, M>(self, f: F) -> M
     where
         Self: Iterator<Item = V> + Sized,
-        K: Hash + Eq,
         F: FnMut(&V) -> K,
+        M: map::Map<K, Vec<V>> + Default,
     {
         group_map::into_group_map_by(self, f)
     }
@@ -3767,7 +3769,6 @@ pub trait Itertools: Iterator {
     fn into_grouping_map<K, V>(self) -> GroupingMap<Self>
     where
         Self: Iterator<Item = (K, V)> + Sized,
-        K: Hash + Eq,
     {
         grouping_map::new(self)
     }
@@ -3784,7 +3785,6 @@ pub trait Itertools: Iterator {
     fn into_grouping_map_by<K, V, F>(self, key_mapper: F) -> GroupingMapBy<Self, F>
     where
         Self: Iterator<Item = V> + Sized,
-        K: Hash + Eq,
         F: FnMut(&V) -> K,
     {
         grouping_map::new(grouping_map::new_map_for_grouping(self, key_mapper))
