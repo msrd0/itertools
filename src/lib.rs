@@ -206,7 +206,7 @@ mod kmerge_impl;
 #[cfg(feature = "use_alloc")]
 mod lazy_buffer;
 #[cfg(feature = "use_alloc")]
-mod map;
+pub mod map;
 mod merge_join;
 mod minmax;
 #[cfg(feature = "use_alloc")]
