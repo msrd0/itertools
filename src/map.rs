@@ -50,6 +50,40 @@ where
     }
 }
 
+impl<'a, K, V> Entry<'a, K, V> for std::collections::btree_map::Entry<'a, K, V>
+where
+    K: Ord,
+{
+    fn or_insert_with<F>(self, default: F) -> &'a mut V
+    where
+        F: FnOnce() -> V,
+    {
+        self.or_insert_with(default)
+    }
+}
+
+impl<K, V> Map<K, V> for std::collections::BTreeMap<K, V>
+where
+    K: Ord,
+{
+    type Entry<'a>
+        = std::collections::btree_map::Entry<'a, K, V>
+    where
+        Self: 'a;
+
+    fn insert(&mut self, key: K, value: V) -> Option<V> {
+        self.insert(key, value)
+    }
+
+    fn remove(&mut self, key: &K) -> Option<V> {
+        self.remove(key)
+    }
+
+    fn entry(&mut self, key: K) -> Self::Entry<'_> {
+        self.entry(key)
+    }
+}
+
 #[cfg(feature = "hashbrown")]
 impl<'a, K, V, S> Entry<'a, K, V> for hashbrown::hash_map::Entry<'a, K, V, S>
 where
